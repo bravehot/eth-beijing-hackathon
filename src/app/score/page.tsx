@@ -22,13 +22,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 const ORACLE_ADDRESS = "0x8849e164E749D47d370e93a1D0eE65972caa334F";
 
-const provider = new ethers.providers.Web3Provider(window.ethereum);
-const oracleContract = new Contract(
-  ORACLE_ADDRESS,
-  GradeOracleAbi,
-  provider.getSigner()
-);
-
 interface InteUserScore {
   grade: number;
   compositions: {
@@ -110,6 +103,9 @@ const Score: React.FC = () => {
   const address = useSearchParams().get("address");
 
   const chartRef = useRef<echarts.ECharts>();
+  const providerRef = useRef<ethers.providers.Web3Provider>();
+  const oracleContractRef = useRef<Contract>();
+
   const [isContractAddress, setIsContractAddress] = useState<boolean>(false);
   const [userScore, setUserScore] = useState<InteUserScore>({
     grade: 0,
@@ -134,6 +130,14 @@ const Score: React.FC = () => {
     const handleResize = throttle(() => {
       chartRef.current?.resize();
     }, 300);
+
+    providerRef.current = new ethers.providers.Web3Provider(window.ethereum);
+    oracleContractRef.current = new Contract(
+      ORACLE_ADDRESS,
+      GradeOracleAbi,
+      providerRef.current.getSigner()
+    );
+
     window.addEventListener("resize", handleResize);
 
     return () => {
@@ -195,7 +199,7 @@ const Score: React.FC = () => {
     };
 
     const checkWalletAddress = async () => {
-      const code = await provider.getCode(address ?? "");
+      const code = await providerRef.current?.getCode(address ?? "");
       setIsContractAddress(code !== "0x");
     };
 
@@ -259,10 +263,13 @@ const Score: React.FC = () => {
   };
 
   const handleDataChain = async () => {
-    console.log("walletProvider.getSigner(): ", provider.getSigner());
-    console.log("gradeContract: ", oracleContract);
+    console.log(
+      "walletProvider.getSigner(): ",
+      providerRef.current?.getSigner()
+    );
+    console.log("gradeContract: ", oracleContractRef.current);
 
-    const tx = await oracleContract.requestUserGrades(address);
+    const tx = await oracleContractRef.current?.requestUserGrades(address);
     tx.wait();
     console.log("等待上链");
     console.log("tx: ", tx);
