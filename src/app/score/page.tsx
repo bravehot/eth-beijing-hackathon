@@ -17,7 +17,7 @@ import silver from "../../../public/image/silver.png";
 import gold from "../../../public/image/gold.png";
 import king from "../../../public/image/king.png";
 
-import GradeOracleAbi from "@/app/abi/GradeOracle.json";
+import GradeOracleAbi from "@/app/abi/gradeOracle.json";
 import { useRouter, useSearchParams } from "next/navigation";
 
 const ORACLE_ADDRESS = "0x8849e164E749D47d370e93a1D0eE65972caa334F";
