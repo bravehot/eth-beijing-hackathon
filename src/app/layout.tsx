@@ -17,7 +17,7 @@ export default function RootLayout({
           <iframe
             className="absolute top-0 left-0"
             style={{ width: "100vw", height: "100vh" }}
-            src="http://canvas.tutulist.cn/"
+            src="https://canvas.tutulist.cn/"
           />
         </ConfigProvider>
       </body>
