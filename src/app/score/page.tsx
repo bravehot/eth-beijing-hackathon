@@ -1,13 +1,14 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image, { StaticImageData } from "next/image";
-import { Button, Tag } from "antd";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Button, Tag, message } from "antd";
 import { LeftOutlined } from "@ant-design/icons";
 import * as echarts from "echarts";
 import { Contract, ethers } from "ethers";
 import { motion } from "framer-motion";
 import CountUp from "react-countup";
-import { throttle } from "lodash-es";
+import { isArray, throttle } from "lodash-es";
 
 import request from "@/utils/request";
 
@@ -17,45 +18,66 @@ import silver from "../../../public/image/silver.png";
 import gold from "../../../public/image/gold.png";
 import king from "../../../public/image/king.png";
 
+import creditAbi from "@/app/abi/credit.json";
 import GradeOracleAbi from "@/app/abi/gradeOracle.json";
-import { useRouter, useSearchParams } from "next/navigation";
 
-const ORACLE_ADDRESS = "0x8849e164E749D47d370e93a1D0eE65972caa334F";
+const CREDIT_ADDRESS = "0x1A056A77F5b09A74d705DAe1537ac815ab4E6170";
+const ORACLE_ADDRESS = "0x1A056A77F5b09A74d705DAe1537ac815ab4E6170";
 
+/**
+ * 缩写 对应
+ * OPH 1. 链上支付信用记录 - On-chain payment credit history
+ * OCH 2. 链上信贷支付记录 - On-chain credit payment history
+ * INFT 3 链上身份 NFT 等级 - On-chain identity NFT level
+ * LAC 4 关联账户信用级别 - Linked account credit rating
+ * OEC 5 链上电商支付信用记录 - On-chain e-commerce payment credit history
+ * SCS 6 Special credit supplement
+ * DCS 7. Deshop信用认证分数 - Deshop Credit verification score
+ * OAH 8. 链上资产持有金额 - On-chain asset holding amount
+ */
+const latitudeNameList: string[] = [
+  "OPH",
+  "OCH",
+  "INFT",
+  "LAC",
+  "OEC",
+  "SCS",
+  "DCS",
+  "OAH",
+];
+
+interface InteCompositions {
+  name: string;
+  max: number;
+  grade: number;
+}
 interface InteUserScore {
   grade: number;
-  compositions: {
-    name: string;
-    max: number;
-    grade: number;
-  }[];
+  compositions: InteCompositions[];
 }
 
 interface InteUserInfo {
   avatarUrl: StaticImageData | string;
 }
 
-interface InterUserBadge {
-  score: number;
-}
-const UserBadge: React.FC<InterUserBadge> = ({ score }) => {
+const UserBadge: React.FC<{ score: number }> = ({ score }) => {
   const badgeInfo: {
     level: string;
     url: StaticImageData;
   } = useMemo(() => {
-    if (score < 100) {
+    if (score < 320) {
       return {
         level: "青 铜",
         url: copper,
       };
     }
-    if (score < 500) {
+    if (score < 480) {
       return {
         level: "白 银",
         url: silver,
       };
     }
-    if (score < 1000) {
+    if (score < 640) {
       return {
         level: "黄 金",
         url: gold,
@@ -67,50 +89,47 @@ const UserBadge: React.FC<InterUserBadge> = ({ score }) => {
     };
   }, [score]);
   return (
-    <>
-      <section className="flex flex-col items-center">
-        <motion.div
-          className="mt-10"
-          whileHover={{ scale: 1.1 }}
-          animate={{
-            scale: [1.1, 1],
-            transition: {
-              duration: 1,
-              once: true,
-            },
-          }}
-        >
-          <Image
-            className="scale-110"
-            src={badgeInfo.url}
-            alt="badge"
-            width={210}
-          />
-        </motion.div>
-        <span className="text-white text-center w-[210px] mt-4">
-          信用等级 : {badgeInfo.level}
-        </span>
-      </section>
-      <section className="text-white">
-        <p>提升您的信用等级</p>
-      </section>
-    </>
+    <section className="flex flex-col items-center">
+      {score > 0 ? (
+        <>
+          <motion.div
+            className="mt-10"
+            animate={{
+              scale: [1.1, 1.04, 1.1],
+              transition: {
+                ease: "linear",
+                duration: 2,
+                repeat: Infinity,
+              },
+            }}
+          >
+            <Image
+              className="scale-110"
+              src={badgeInfo.url}
+              alt="badge"
+              width={210}
+            />
+          </motion.div>
+          <p className="text-white text-center w-[210px] mt-6">
+            信用等级 : <span className="text-lg">{badgeInfo.level}</span>
+          </p>
+        </>
+      ) : null}
+    </section>
   );
 };
 
 const Score: React.FC = () => {
   const router = useRouter();
   const address = useSearchParams().get("address");
+  const [messageApi, contextHolder] = message.useMessage();
 
   const chartRef = useRef<echarts.ECharts>();
   const providerRef = useRef<ethers.providers.Web3Provider>();
   const oracleContractRef = useRef<Contract>();
 
   const [isContractAddress, setIsContractAddress] = useState<boolean>(false);
-  const [userScore, setUserScore] = useState<InteUserScore>({
-    grade: 0,
-    compositions: [],
-  });
+  const [userScore, setUserScore] = useState<number>(0);
   const [userInfo, setUserInfo] = useState<InteUserInfo>({
     avatarUrl: defaultAvatar,
   });
@@ -146,133 +165,166 @@ const Score: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    const requestUserScore = async () => {
-      // const { data } = await request<InteUserScore>({
-      //   url: "credit/grade",
-      //   method: "GET",
-      //   params: {
-      //     address,
-      //   },
-      // });
-      const data = {
-        grade: 299,
-        compositions: [
-          {
-            name: "a",
-            max: 100,
-            grade: 47,
-          },
-          {
-            name: "b",
-            max: 100,
-            grade: 38,
-          },
-          {
-            name: "c",
-            max: 100,
-            grade: 50,
-          },
-          {
-            name: "d",
-            max: 100,
-            grade: 22,
-          },
-          {
-            name: "e",
-            max: 100,
-            grade: 68,
-          },
-          {
-            name: "f",
-            max: 100,
-            grade: 6,
-          },
-          {
-            name: "g",
-            max: 100,
-            grade: 68,
-          },
-        ],
-      };
-      setUserScore(data);
-      handleChartOption(data);
-    };
+    const provider = new ethers.providers.Web3Provider(window.ethereum);
+    const creditContract = new Contract(
+      CREDIT_ADDRESS,
+      creditAbi,
+      provider.getSigner()
+    );
 
-    const checkWalletAddress = async () => {
+    const requestUserScore = async () => {
+      const { data } = await request<InteUserScore>({
+        url: "credit/grade",
+        method: "GET",
+        params: {
+          address,
+        },
+      });
+
+      // determine whether it is a contract address or not
       const code = await providerRef.current?.getCode(address ?? "");
       setIsContractAddress(code !== "0x");
+
+      // get user score by contract
+      const tx = await creditContract.getGrade(address);
+      const { _, 1: latitudeScoreList, 2: latitudeMaxScoreList } = tx;
+
+      if (
+        isArray(latitudeScoreList) &&
+        isArray(latitudeMaxScoreList) &&
+        isArray(tx.realTimeGrade)
+      ) {
+        const [realTimeMaxScore, realTimeScore] = tx.realTimeGrade;
+
+        const realTime: InteCompositions = {
+          name: latitudeNameList.pop() as string,
+          max: ethers.BigNumber.from(realTimeMaxScore).toNumber(),
+          grade: ethers.BigNumber.from(realTimeScore).toNumber(),
+        };
+
+        const sum = latitudeScoreList
+          .reduce(
+            (acc, cur) => acc.add(ethers.BigNumber.from(cur)),
+            ethers.BigNumber.from(0)
+          )
+          .add(ethers.BigNumber.from(realTimeScore));
+
+        const underChainScore: InteUserScore = {
+          grade: data.grade,
+          compositions: data.compositions.map(({ max, grade }, index) => {
+            return {
+              name: latitudeNameList[index],
+              max,
+              grade,
+            };
+          }),
+        };
+
+        const upChainScore: InteUserScore = {
+          grade: sum.toNumber(),
+          compositions: latitudeScoreList.map((item, index) => {
+            return {
+              name: latitudeNameList[index],
+              max: latitudeMaxScoreList[index].toNumber(),
+              grade: item.toNumber(),
+            };
+          }),
+        };
+
+        underChainScore.compositions.push(realTime);
+        upChainScore.compositions.push(realTime);
+
+        setUserScore(sum.toNumber());
+        handleChartOption(underChainScore, upChainScore);
+      }
     };
 
-    checkWalletAddress();
     requestUserScore();
   }, [address]);
 
-  const handleChartOption = ({ compositions }: InteUserScore) => {
-    if (compositions.length) {
-      console.log(chartRef.current);
-      chartRef.current?.setOption({
-        tooltip: {
-          trigger: "axis",
-          backgroundColor: "rgba(0,0,0,0.7)",
-          color: "black",
-          textStyle: {
-            color: "white", //设置文字颜色
+  const handleChartOption = (
+    { compositions: currentCompositions }: InteUserScore,
+    { compositions: previousCompositions }: InteUserScore
+  ) => {
+    chartRef.current?.setOption({
+      tooltip: {
+        trigger: "axis",
+        backgroundColor: "rgba(0,0,0,0.7)",
+        color: "black",
+        textStyle: {
+          color: "white", //设置文字颜色
+        },
+      },
+      radar: [
+        {
+          indicator: currentCompositions.map(({ name, max }) => {
+            return {
+              name,
+              max,
+            };
+          }),
+          center: ["50%", "50%"],
+          splitLine: {
+            show: true,
+            lineStyle: {
+              width: 1,
+              color: "white", // 图表背景网格线的颜色
+            },
           },
         },
-        radar: [
-          {
-            indicator: compositions.map(({ name, max }) => {
-              return {
-                name,
-                max,
-              };
-            }),
-            center: ["50%", "50%"],
-            splitLine: {
-              show: true,
-              lineStyle: {
-                width: 1,
-                color: "white", // 图表背景网格线的颜色
-              },
-            },
+      ],
+      series: [
+        {
+          type: "radar",
+          tooltip: {
+            trigger: "item",
           },
-        ],
-        series: [
-          {
-            type: "radar",
-            tooltip: {
-              trigger: "item",
-            },
-            itemStyle: {
-              color: "#9974ee",
-            },
-            areaStyle: {
-              color: "#d946ef",
-              borderColor: "#d946ef",
-            },
-            data: [
-              {
-                value: compositions.map(({ grade }) => grade),
-                name: "各项分值",
-              },
-            ],
+          itemStyle: { color: "#d946ef" },
+          areaStyle: {
+            color: "#9974ee",
+            borderColor: "#9974ee",
           },
-        ],
-      });
-    }
+          data: [
+            {
+              value: previousCompositions.map(({ grade }) => grade),
+              name: "上次分值",
+            },
+          ],
+        },
+        {
+          type: "radar",
+          tooltip: {
+            trigger: "item",
+          },
+          itemStyle: { color: "#9974ee" },
+          areaStyle: {
+            color: "#d946ef",
+            borderColor: "#d946ef",
+          },
+          data: [
+            {
+              value: currentCompositions.map(({ grade }) => grade),
+              name: "各项分值",
+            },
+          ],
+        },
+      ],
+    });
   };
 
   const handleDataChain = async () => {
-    console.log(
-      "walletProvider.getSigner(): ",
-      providerRef.current?.getSigner()
-    );
-    console.log("gradeContract: ", oracleContractRef.current);
+    messageApi.loading({
+      content: "上链中, 请稍后",
+      duration: 3000,
+    });
 
-    const tx = await oracleContractRef.current?.requestUserGrades(address);
-    tx.wait();
-    console.log("等待上链");
-    console.log("tx: ", tx);
+    try {
+      const tx = await oracleContractRef.current?.requestUserGrades(address);
+      tx.wait();
+      messageApi.success("上链成功");
+    } catch (error) {
+      messageApi.error("上链失败");
+    }
   };
 
   const handleBack = () => {
@@ -280,57 +332,60 @@ const Score: React.FC = () => {
   };
 
   return (
-    <section className="relative z-10 h-full">
-      <section className="w-2/3 mx-auto h-full flex flex-col pt-5 mb-10">
-        <section className="flex justify-start mb-10">
-          <Button
-            className="flex items-center justify-center"
-            type="text"
-            icon={<LeftOutlined />}
-            onClick={handleBack}
-          />
-        </section>
-
-        <section className="w-full h-full grid grid-cols-2 grid-">
-          <section>
-            <section className="flex">
-              <Image
-                src={userInfo.avatarUrl}
-                alt="default avatar"
-                width={50}
-                height={50}
-                className="mr-4"
-              />
-              <section className="flex flex-col justify-between items-start">
-                <span className="text-white">{walletAddress}</span>
-                {isContractAddress ? (
-                  <Tag color="purple">Contract</Tag>
-                ) : (
-                  <Tag color="magenta">EVM Wallet</Tag>
-                )}
-              </section>
-            </section>
-            <UserBadge score={userScore.grade} />
+    <>
+      {contextHolder}
+      <section className="relative z-10 h-full">
+        <section className="w-2/3 mx-auto h-full flex flex-col pt-5 mb-10">
+          <section className="flex justify-start mb-10">
+            <Button
+              className="flex items-center justify-center"
+              type="text"
+              icon={<LeftOutlined />}
+              onClick={handleBack}
+            />
           </section>
 
-          <section className="flex flex-col">
-            <section className="w-full flex justify-start text-white items-center">
-              <span className="text-2xl mr-4">您的信用分为:</span>
-              <CountUp className="text-3xl" end={userScore?.grade} />
-
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                onClick={handleDataChain}
-                className="bg-gradient-to-r from-violet-500 to-fuchsia-500 w-[120px] h-[34px] rounded-xl shadow-inner text-white text-sm ml-auto"
-              >
-                信用分上链
-              </motion.button>
+          <section className="w-full h-full grid grid-cols-2 grid-">
+            <section>
+              <section className="flex">
+                <Image
+                  src={userInfo.avatarUrl}
+                  alt="default avatar"
+                  width={50}
+                  height={50}
+                  className="mr-4"
+                />
+                <section className="flex flex-col justify-between items-start">
+                  <span className="text-white">{walletAddress}</span>
+                  {isContractAddress ? (
+                    <Tag color="purple">Contract</Tag>
+                  ) : (
+                    <Tag color="magenta">EVM Wallet</Tag>
+                  )}
+                </section>
+              </section>
+              <UserBadge score={userScore} />
             </section>
-            <section id="chart" className="w-full h-[480px]"></section>
+
+            <section className="flex flex-col">
+              <section className="w-full flex justify-start text-white items-center">
+                <span className="text-2xl mr-4">您的信用分为:</span>
+                <CountUp className="text-3xl" end={userScore} />
+
+                <motion.button
+                  whileHover={{ scale: 1.1 }}
+                  onClick={handleDataChain}
+                  className="bg-gradient-to-r from-violet-500 to-fuchsia-500 w-[120px] h-[34px] rounded-xl shadow-inner text-white text-sm ml-auto"
+                >
+                  信用分上链
+                </motion.button>
+              </section>
+              <section id="chart" className="w-full h-[480px]"></section>
+            </section>
           </section>
         </section>
       </section>
-    </section>
+    </>
   );
 };
 
