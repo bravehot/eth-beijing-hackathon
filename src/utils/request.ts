@@ -11,7 +11,7 @@ const netWorkCodeMaps: Record<number, string> = {
 } as const;
 
 const axiosInterface = axios.create({
-  baseURL: "http://101.36.120.180",
+  baseURL: "https://101.36.120.180",
   timeout: 10000,
   headers: {
     "content-type": "application/json",
