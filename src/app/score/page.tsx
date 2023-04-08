@@ -252,9 +252,12 @@ const Score: React.FC = () => {
       setUserScore(sum.toNumber());
       setUserInfo({
         ...userInfo,
-        updateTime: dayjs
-          .unix(lastUpdateTime.toNumber())
-          .format("YYYY-MM-DD HH:mm:ss"),
+        updateTime:
+          lastUpdateTime.toNumber() === 0
+            ? ""
+            : dayjs
+                .unix(lastUpdateTime.toNumber())
+                .format("YYYY-MM-DD HH:mm:ss"),
       });
       handleChartOption(underChainScore, upChainScore);
     }
