@@ -31,7 +31,7 @@ export default function Home() {
     } else {
       messageApi.open({
         type: "warning",
-        content: "请先安装 MetaMask",
+        content: "Please install MetaMask",
       });
     }
   }, []);
@@ -49,7 +49,7 @@ export default function Home() {
     } else {
       messageApi.open({
         type: "warning",
-        content: "请先安装 MetaMask",
+        content: "Please install MetaMask",
       });
     }
   };

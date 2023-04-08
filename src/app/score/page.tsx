@@ -8,7 +8,7 @@ import * as echarts from "echarts";
 import { Contract, ethers } from "ethers";
 import { motion } from "framer-motion";
 import CountUp from "react-countup";
-import { isArray, throttle } from "lodash-es";
+import { isArray, isEmpty, throttle } from "lodash-es";
 import dayjs from "dayjs";
 import request from "@/utils/request";
 
@@ -153,6 +153,11 @@ const Score: React.FC = () => {
       chartRef.current?.resize();
     }, 300);
 
+    if (isEmpty(window.ethereum)) {
+      messageApi.warning("Please install Metamask");
+      return;
+    }
+
     providerRef.current = new ethers.providers.Web3Provider(window.ethereum);
     oracleContractRef.current = new Contract(
       ORACLE_ADDRESS,
@@ -172,6 +177,10 @@ const Score: React.FC = () => {
   }, []);
 
   const requestUserScore = async () => {
+    if (isEmpty(window.ethereum)) {
+      messageApi.warning("Please install Metamask");
+      return;
+    }
     const provider = new ethers.providers.Web3Provider(window.ethereum);
     const creditContract = new Contract(
       CREDIT_ADDRESS,
