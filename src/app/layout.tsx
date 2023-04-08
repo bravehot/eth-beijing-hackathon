@@ -9,6 +9,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <head>
+        <title>Credit Score</title>
+      </head>
       <body>
         <ConfigProvider theme={{ algorithm: theme.darkAlgorithm }}>
           <section className="w-screen h-screen overflow-hidden relative">

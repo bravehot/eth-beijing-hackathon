@@ -35,6 +35,7 @@ axiosInterface.interceptors.response.use(
     if (status === 200) {
       const { code, message } = data;
       const responseCode = Number(code);
+      console.log("responseCode: ", responseCode);
     }
     return response;
   },

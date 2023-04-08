@@ -21,6 +21,13 @@ export default function Home() {
     if (window.ethereum) {
       const provider = new ethers.providers.Web3Provider(window.ethereum);
       setWalletProvider(provider);
+      provider
+        .getSigner()
+        .getAddress()
+        .then((address: string) => {
+          console.log("address: ", address);
+          setWalletInputAddress(address);
+        });
     } else {
       messageApi.open({
         type: "warning",

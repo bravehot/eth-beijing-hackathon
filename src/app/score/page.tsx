@@ -9,7 +9,7 @@ import { Contract, ethers } from "ethers";
 import { motion } from "framer-motion";
 import CountUp from "react-countup";
 import { isArray, throttle } from "lodash-es";
-
+import dayjs from "dayjs";
 import request from "@/utils/request";
 
 import defaultAvatar from "../../../public/image/eth.png";
@@ -21,8 +21,8 @@ import king from "../../../public/image/king.png";
 import creditAbi from "@/app/abi/credit.json";
 import GradeOracleAbi from "@/app/abi/gradeOracle.json";
 
-const CREDIT_ADDRESS = "0x1A056A77F5b09A74d705DAe1537ac815ab4E6170";
-const ORACLE_ADDRESS = "0x1A056A77F5b09A74d705DAe1537ac815ab4E6170";
+const CREDIT_ADDRESS = "0x186CFf323D61b839Aebe897310f3f1310bfAF183";
+const ORACLE_ADDRESS = "0xeB462550d220c52A839Ad9D80182Fcc50Bd8C0F6";
 
 /**
  * 缩写 对应
@@ -51,6 +51,7 @@ interface InteCompositions {
   max: number;
   grade: number;
 }
+
 interface InteUserScore {
   grade: number;
   compositions: InteCompositions[];
@@ -58,6 +59,7 @@ interface InteUserScore {
 
 interface InteUserInfo {
   avatarUrl: StaticImageData | string;
+  updateTime: string;
 }
 
 const UserBadge: React.FC<{ score: number }> = ({ score }) => {
@@ -107,7 +109,7 @@ const UserBadge: React.FC<{ score: number }> = ({ score }) => {
               className="scale-110"
               src={badgeInfo.url}
               alt="badge"
-              width={210}
+              width={260}
             />
           </motion.div>
           <p className="text-white text-center w-[210px] mt-6">
@@ -132,6 +134,7 @@ const Score: React.FC = () => {
   const [userScore, setUserScore] = useState<number>(0);
   const [userInfo, setUserInfo] = useState<InteUserInfo>({
     avatarUrl: defaultAvatar,
+    updateTime: "",
   });
 
   const walletAddress = useMemo(() => {
@@ -165,82 +168,97 @@ const Score: React.FC = () => {
   }, []);
 
   useEffect(() => {
+    requestUserScore();
+  }, []);
+
+  const requestUserScore = async () => {
     const provider = new ethers.providers.Web3Provider(window.ethereum);
     const creditContract = new Contract(
       CREDIT_ADDRESS,
       creditAbi,
       provider.getSigner()
     );
+    const { data } = await request<InteUserScore>({
+      url: "credit/grade",
+      method: "GET",
+      params: {
+        address,
+      },
+    });
 
-    const requestUserScore = async () => {
-      const { data } = await request<InteUserScore>({
-        url: "credit/grade",
-        method: "GET",
-        params: {
-          address,
-        },
+    // determine whether it is a contract address or not
+    const code = await providerRef.current?.getCode(address ?? "");
+    setIsContractAddress(code !== "0x");
+
+    // get user score by contract
+    const tx = await creditContract.getGrade(address);
+    console.log("tx: ", tx);
+    const {
+      _,
+      1: latitudeScoreList,
+      2: latitudeMaxScoreList,
+      lastUpdateTime,
+    } = tx;
+
+    if (
+      isArray(latitudeScoreList) &&
+      isArray(latitudeMaxScoreList) &&
+      isArray(tx.realTimeGrade)
+    ) {
+      const [realTimeMaxScore, realTimeScore] = tx.realTimeGrade;
+
+      const realTime: InteCompositions = {
+        name: latitudeNameList[latitudeNameList.length - 1],
+        max: ethers.BigNumber.from(realTimeMaxScore).toNumber(),
+        grade: ethers.BigNumber.from(realTimeScore).toNumber(),
+      };
+
+      const sum = latitudeScoreList
+        .reduce(
+          (acc, cur) => acc.add(ethers.BigNumber.from(cur)),
+          ethers.BigNumber.from(0)
+        )
+        .add(ethers.BigNumber.from(realTimeScore));
+
+      const underChainScore: InteUserScore = {
+        grade: data.grade,
+        compositions: data.compositions.map(({ max, grade }, index) => {
+          return {
+            name: latitudeNameList[index],
+            max,
+            grade,
+          };
+        }),
+      };
+
+      const upChainScore: InteUserScore = {
+        grade: sum.toNumber(),
+        compositions: latitudeScoreList.map((item, index) => {
+          return {
+            name: latitudeNameList[index],
+            max: latitudeMaxScoreList[index].toNumber(),
+            grade: item.toNumber(),
+          };
+        }),
+      };
+
+      underChainScore.compositions.push(realTime);
+      console.log("underChainScore: ", underChainScore);
+      upChainScore.compositions.push(realTime);
+      console.log("upChainScore: ", upChainScore);
+
+      console.log("lastUpdateTime.toNumber(): ", lastUpdateTime.toNumber());
+
+      setUserScore(sum.toNumber());
+      setUserInfo({
+        ...userInfo,
+        updateTime: dayjs
+          .unix(lastUpdateTime.toNumber())
+          .format("YYYY-MM-DD HH:mm:ss"),
       });
-
-      // determine whether it is a contract address or not
-      const code = await providerRef.current?.getCode(address ?? "");
-      setIsContractAddress(code !== "0x");
-
-      // get user score by contract
-      const tx = await creditContract.getGrade(address);
-      const { _, 1: latitudeScoreList, 2: latitudeMaxScoreList } = tx;
-
-      if (
-        isArray(latitudeScoreList) &&
-        isArray(latitudeMaxScoreList) &&
-        isArray(tx.realTimeGrade)
-      ) {
-        const [realTimeMaxScore, realTimeScore] = tx.realTimeGrade;
-
-        const realTime: InteCompositions = {
-          name: latitudeNameList.pop() as string,
-          max: ethers.BigNumber.from(realTimeMaxScore).toNumber(),
-          grade: ethers.BigNumber.from(realTimeScore).toNumber(),
-        };
-
-        const sum = latitudeScoreList
-          .reduce(
-            (acc, cur) => acc.add(ethers.BigNumber.from(cur)),
-            ethers.BigNumber.from(0)
-          )
-          .add(ethers.BigNumber.from(realTimeScore));
-
-        const underChainScore: InteUserScore = {
-          grade: data.grade,
-          compositions: data.compositions.map(({ max, grade }, index) => {
-            return {
-              name: latitudeNameList[index],
-              max,
-              grade,
-            };
-          }),
-        };
-
-        const upChainScore: InteUserScore = {
-          grade: sum.toNumber(),
-          compositions: latitudeScoreList.map((item, index) => {
-            return {
-              name: latitudeNameList[index],
-              max: latitudeMaxScoreList[index].toNumber(),
-              grade: item.toNumber(),
-            };
-          }),
-        };
-
-        underChainScore.compositions.push(realTime);
-        upChainScore.compositions.push(realTime);
-
-        setUserScore(sum.toNumber());
-        handleChartOption(underChainScore, upChainScore);
-      }
-    };
-
-    requestUserScore();
-  }, [address]);
+      handleChartOption(underChainScore, upChainScore);
+    }
+  };
 
   const handleChartOption = (
     { compositions: currentCompositions }: InteUserScore,
@@ -321,8 +339,19 @@ const Score: React.FC = () => {
     try {
       const tx = await oracleContractRef.current?.requestUserGrades(address);
       tx.wait();
-      messageApi.success("上链成功");
+      messageApi.destroy();
+      messageApi.success("上链成功", 1);
+      messageApi.loading({
+        content: "正在获取最新上链数据",
+      });
+
+      setTimeout(() => {
+        messageApi.destroy();
+        requestUserScore();
+        messageApi.success("数据更新成功");
+      }, 3000);
     } catch (error) {
+      messageApi.destroy();
       messageApi.error("上链失败");
     }
   };
@@ -380,7 +409,14 @@ const Score: React.FC = () => {
                   信用分上链
                 </motion.button>
               </section>
-              <section id="chart" className="w-full h-[480px]"></section>
+              <section id="chart" className="w-full h-[460px]"></section>
+              <section className="text-white w-full text-center">
+                {userInfo.updateTime ? (
+                  <span className="text-sm">
+                    上次更新时间: {userInfo.updateTime}
+                  </span>
+                ) : null}
+              </section>
             </section>
           </section>
         </section>
